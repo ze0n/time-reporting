@@ -8,7 +8,7 @@ Currently supported sources:
 ## Run
 Run it with:
     
-    powershell ./gms.report.ps1 > out
+    powershell ./time.report.ps1 > out
 
 ## Parameters
     -JiraServer   Jira API endpoint, example "https://domain.atlassian.net/rest/api/2", where domain is your team name in Jira
