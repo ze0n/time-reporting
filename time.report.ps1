@@ -12,7 +12,8 @@ param (
     [string]    $Repositories = $( Read-Host "Repositories paths separated with '|' ([./], './|../../../iris-devops|../../../playground')"),
     [Parameter(Mandatory=$True)]
     [string]    $GitAuthor = $( Read-Host "Input git username"),
-    [string]    $Month = $(Read-Host "Month ([current], previous)")
+    [string]    $Month = $(Read-Host "Month ([current], previous)"),
+    [string]    $Output # = "./out.txt"
 )
 
 #---------------------------------------------------------
@@ -41,7 +42,9 @@ $pwd = Pwd
 if($Repositories -eq ""){
     $Repositories = @("./")
 } else {
-    $Repositories = $Repositories.Split("|")
+    Write-Host $Repositories
+    $Repositories = $Repositories -split "\|"
+    Write-Host $Repositories.GetType()
 }
 
 if($Month -eq ""){
@@ -90,10 +93,18 @@ Write-Host ""
 $index=0
 $fileList = @()
  foreach ($repository in $Repositories) {
+
+    Write-Host "Rebasing to the git repo $repository"
+
+    if(![System.IO.Directory]::Exists($repository)){
+        Write-Error "Path to the repository doesn't exist '$repository'"
+        exit 1
+    }
+
     pushd .
     cd $repository
     $fileName = "$pwd\git-$Month-$index.csv"
-    Write-Host "Updating git repo"
+    Write-Host "Updating git repo $repository"
     & git fetch
     Write-Host "Requesting data from GIT: git log --author=$GitAuthor --format=`"%cd|%s`" --date=short --since=`"1 $Month`" --until=`"$lastMonthDay $Month`" --no-merges --reverse --branches --remotes > `"$fileName`""
     & git log --author=$GitAuthor --format="%cd|%s" --date=short --since="1 $Month" --until="$lastMonthDay $Month" --no-merges --reverse --branches --remotes > "$fileName"
@@ -158,9 +169,11 @@ Catch
 $mergedFileName = "$pwd\merged-$Month.csv"
 foreach($file in $fileList){
     Get-Content $file | Out-File -FilePath $mergedFileName -Encoding UTF8 -Append
+    Remove-Item -Path $file
 }
 $mergedSortedFileName = "$pwd\mergedsorted-$Month.csv"
 Get-Content $mergedFileName | sort | get-unique > $mergedSortedFileName
+Remove-Item -Path $mergedFileName
 
 #---------------------------------------------------------
 # Group
@@ -172,19 +185,47 @@ $groups = Get-Content $mergedSortedFileName | ForEach-Object {  [PSCustomObject]
 } | Group-Object Date 
 
 
-Write-Host ""
-Write-Host "========================================================"
-Write-Host "Monthly report"
-Write-Host "For the user:", "$JiraUser@jira or $GitAuthor@git"
-Write-Host "Month:", $Month, "[", 1, ", ", $lastMonthDay,  "]"
-Write-Host "========================================================"
-
-foreach($group in $groups){
-    Write-Host "=========="
-    Write-Host $group.Name
-    Write-Host "=========="
-    foreach($obj in $group.Group){
-        Write-Host $obj.Text
+if(![String]::IsNullOrWhiteSpace($Output))
+{
+    if([System.IO.File]::Exists($Output)){
+        Write-Host "Output file already exists, rewriting" -ForegroundColor Yellow
+        Remove-Item -Path $Output
     }
+
+    echo "" | Out-File -FilePath $Output -Encoding UTF8 -Append
+    echo "========================================================"  | Out-File -FilePath $Output -Encoding UTF8 -Append
+    echo "Monthly report" | Out-File -FilePath $Output -Encoding UTF8 -Append
+    echo "For the user: $JiraUser@jira and $GitAuthor@git" | Out-File -FilePath $Output -Encoding UTF8 -Append
+    echo "For git repos: $Repositories" | Out-File -FilePath $Output -Encoding UTF8 -Append
+    echo "Month: $Month [1, $lastMonthDay]" | Out-File -FilePath $Output -Encoding UTF8 -Append
+    echo "========================================================" | Out-File -FilePath $Output -Encoding UTF8 -Append
+
+    foreach($group in $groups){
+        echo "==========" | Out-File -FilePath $Output -Encoding UTF8 -Append
+        echo $group.Name | Out-File -FilePath $Output -Encoding UTF8 -Append
+        echo "==========" | Out-File -FilePath $Output -Encoding UTF8 -Append
+        foreach($obj in $group.Group){
+            echo $obj.Text | Out-File -FilePath $Output -Encoding UTF8 -Append
+        }
+        echo "" | Out-File -FilePath $Output -Encoding UTF8 -Append
+    }
+}
+else
+{
     Write-Host ""
+    Write-Host "========================================================"
+    Write-Host "Monthly report"
+    Write-Host "For the user:", "$JiraUser@jira or $GitAuthor@git"
+    Write-Host "Month:", $Month, "[", 1, ", ", $lastMonthDay,  "]"
+    Write-Host "========================================================"
+
+    foreach($group in $groups){
+        Write-Host "=========="
+        Write-Host $group.Name
+        Write-Host "=========="
+        foreach($obj in $group.Group){
+            Write-Host $obj.Text
+        }
+        Write-Host ""
+    }
 }
